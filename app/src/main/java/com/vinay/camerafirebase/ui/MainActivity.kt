@@ -1,6 +1,7 @@
 package com.vinay.camerafirebase
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -27,6 +28,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var outputDirectory: File
     private val storage = FirebaseStorage.getInstance()
     private var isPreviewMode = false
+    private var currentImageDownloadUrl: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,6 +51,10 @@ class MainActivity : ComponentActivity() {
 
         binding.backToCameraButton.setOnClickListener {
             showCameraPreview()
+        }
+
+        binding.viewOnFirebaseButton.setOnClickListener {
+            openFirebaseStorage()
         }
     }
 
@@ -99,6 +105,7 @@ class MainActivity : ComponentActivity() {
         // Update button states
         binding.cameraCaptureButton.text = "Capture Another"
         binding.backToCameraButton.visibility = View.VISIBLE
+        binding.viewOnFirebaseButton.visibility = View.GONE // Hide until upload is complete
 
         Log.d("CameraFirebase", "Showing captured image: $imageUri")
     }
@@ -116,6 +123,10 @@ class MainActivity : ComponentActivity() {
         // Update button states
         binding.cameraCaptureButton.text = "Capture"
         binding.backToCameraButton.visibility = View.GONE
+        binding.viewOnFirebaseButton.visibility = View.GONE
+
+        // Clear the download URL
+        currentImageDownloadUrl = null
 
         Log.d("CameraFirebase", "Showing camera preview")
     }
@@ -127,14 +138,44 @@ class MainActivity : ComponentActivity() {
         Toast.makeText(this, "Uploading to Firebase...", Toast.LENGTH_SHORT).show()
 
         ref.putFile(fileUri)
-            .addOnSuccessListener {
-                Toast.makeText(this, "Uploaded successfully to Firebase!", Toast.LENGTH_LONG).show()
-                Log.d("CameraFirebase", "Upload successful: $fileName")
+            .addOnSuccessListener { taskSnapshot ->
+                // Get download URL
+                ref.downloadUrl.addOnSuccessListener { downloadUri ->
+                    currentImageDownloadUrl = downloadUri.toString()
+                    Toast.makeText(this, "Uploaded successfully to Firebase!", Toast.LENGTH_LONG).show()
+                    Log.d("CameraFirebase", "Upload successful: $fileName, URL: $currentImageDownloadUrl")
+
+                    // Show the "View on Firebase" button
+                    binding.viewOnFirebaseButton.visibility = View.VISIBLE
+                }.addOnFailureListener { exception ->
+                    Toast.makeText(this, "Failed to get download URL: ${exception.message}", Toast.LENGTH_LONG).show()
+                    Log.e("CameraFirebase", "Failed to get download URL", exception)
+                }
             }
             .addOnFailureListener { exception ->
                 Toast.makeText(this, "Upload failed: ${exception.message}", Toast.LENGTH_LONG).show()
                 Log.e("CameraFirebase", "Upload failed", exception)
             }
+    }
+
+    private fun openFirebaseStorage() {
+        try {
+            currentImageDownloadUrl?.let { imageUrl ->
+                // Open the direct image URL
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(imageUrl))
+                startActivity(intent)
+                Log.d("CameraFirebase", "Opening image URL: $imageUrl")
+            } ?: run {
+                // Fallback to Firebase console if URL is not available
+                val firebaseStorageUrl = "https://console.firebase.google.com/project/writerportfolio-bf611/storage"
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(firebaseStorageUrl))
+                startActivity(intent)
+                Log.d("CameraFirebase", "Opening Firebase Storage console")
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Could not open image", Toast.LENGTH_SHORT).show()
+            Log.e("CameraFirebase", "Failed to open image", e)
+        }
     }
 
     private fun startCamera() {
