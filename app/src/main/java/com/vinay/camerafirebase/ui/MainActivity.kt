@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,6 +26,7 @@ class MainActivity : ComponentActivity() {
     private var imageCapture: ImageCapture? = null
     private lateinit var outputDirectory: File
     private val storage = FirebaseStorage.getInstance()
+    private var isPreviewMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +45,10 @@ class MainActivity : ComponentActivity() {
 
         binding.cameraCaptureButton.setOnClickListener {
             takePhoto()
+        }
+
+        binding.backToCameraButton.setOnClickListener {
+            showCameraPreview()
         }
     }
 
@@ -69,23 +75,64 @@ class MainActivity : ComponentActivity() {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     val savedUri = Uri.fromFile(photoFile)
                     Toast.makeText(baseContext, "Photo captured successfully", Toast.LENGTH_SHORT).show()
+
+                    // Show the captured image immediately
+                    showCapturedImage(savedUri)
+
+                    // Upload to Firebase
                     uploadToFirebase(savedUri)
                 }
             }
         )
     }
 
+    private fun showCapturedImage(imageUri: Uri) {
+        isPreviewMode = true
+
+        // Hide camera preview and show captured image
+        binding.viewFinder.visibility = View.GONE
+        binding.capturedImageView.visibility = View.VISIBLE
+
+        // Load the image into ImageView
+        binding.capturedImageView.setImageURI(imageUri)
+
+        // Update button states
+        binding.cameraCaptureButton.text = "Capture Another"
+        binding.backToCameraButton.visibility = View.VISIBLE
+
+        Log.d("CameraFirebase", "Showing captured image: $imageUri")
+    }
+
+    private fun showCameraPreview() {
+        isPreviewMode = false
+
+        // Show camera preview and hide captured image
+        binding.viewFinder.visibility = View.VISIBLE
+        binding.capturedImageView.visibility = View.GONE
+
+        // Clear the ImageView
+        binding.capturedImageView.setImageDrawable(null)
+
+        // Update button states
+        binding.cameraCaptureButton.text = "Capture"
+        binding.backToCameraButton.visibility = View.GONE
+
+        Log.d("CameraFirebase", "Showing camera preview")
+    }
+
     private fun uploadToFirebase(fileUri: Uri) {
         val fileName = fileUri.lastPathSegment ?: UUID.randomUUID().toString() + ".jpg"
         val ref = storage.reference.child("images/$fileName")
 
+        Toast.makeText(this, "Uploading to Firebase...", Toast.LENGTH_SHORT).show()
+
         ref.putFile(fileUri)
             .addOnSuccessListener {
-                Toast.makeText(this, "Uploaded successfully", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Uploaded successfully to Firebase!", Toast.LENGTH_LONG).show()
                 Log.d("CameraFirebase", "Upload successful: $fileName")
             }
             .addOnFailureListener { exception ->
-                Toast.makeText(this, "Upload failed: ${exception.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Upload failed: ${exception.message}", Toast.LENGTH_LONG).show()
                 Log.e("CameraFirebase", "Upload failed", exception)
             }
     }
@@ -160,4 +207,12 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, "Camera permission is required to use this app", Toast.LENGTH_LONG).show()
             }
         }
+
+    override fun onBackPressed() {
+        if (isPreviewMode) {
+            showCameraPreview()
+        } else {
+            super.onBackPressed()
+        }
+    }
 }
